@@ -30,3 +30,60 @@ export async function getCurrentUser() {
     return null;
   }
 }
+
+// ─── Avatar Functions ───────────────────────────────────────────
+export async function uploadAvatar(file) {
+  try {
+    // Delete old avatar if exists
+    const user = await account.get()
+    const prefs = user.prefs || {}
+    if (prefs.avatarId) {
+      try {
+        await storage.deleteFile(
+          import.meta.env.VITE_APPWRITE_BUCKET_ID,
+          prefs.avatarId
+        )
+      } catch (e) {
+        // ignore if file doesn't exist
+      }
+    }
+
+    // Upload new avatar
+    const uploaded = await storage.createFile(
+      import.meta.env.VITE_APPWRITE_BUCKET_ID,
+      ID.unique(),
+      file
+    )
+
+    // Save avatarId to user prefs
+    await account.updatePrefs({ ...prefs, avatarId: uploaded.$id })
+
+    return uploaded.$id
+  } catch (error) {
+    throw error
+  }
+}
+
+export async function deleteAvatar() {
+  try {
+    const user = await account.get()
+    const prefs = user.prefs || {}
+    if (prefs.avatarId) {
+      await storage.deleteFile(
+        import.meta.env.VITE_APPWRITE_BUCKET_ID,
+        prefs.avatarId
+      )
+      await account.updatePrefs({ ...prefs, avatarId: null })
+    }
+  } catch (error) {
+    throw error
+  }
+}
+
+export function getAvatarUrl(avatarId) {
+  if (!avatarId) return null
+  const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT
+  const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID
+  const bucketId = import.meta.env.VITE_APPWRITE_BUCKET_ID
+  return `${endpoint}/storage/buckets/${bucketId}/files/${avatarId}/view?project=${projectId}`
+}

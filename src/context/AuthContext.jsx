@@ -1,47 +1,57 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { getCurrentUser, logout as appwriteLogout } from "../lib/authService";
+import { getCurrentUser } from "../lib/authService";
+import { logout as appwriteLogout } from "../lib/authService";
+import { getProfilePictureUrl } from "../lib/postService";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user,      setUser]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState(null); // ← NEW
+
+  // ── Helper: load user + avatar from Appwrite session ─────────────────
+  async function loadUser() {
+    try {
+      const u = await getCurrentUser();
+      setUser(u);
+      // avatar stored in Appwrite prefs as avatarId
+      const aid = u?.prefs?.avatarId;
+      setAvatarUrl(aid ? getProfilePictureUrl(aid) : null); // ← NEW
+    } catch {
+      setUser(null);
+      setAvatarUrl(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // On app load — check if user already has an active Appwrite session
-  useEffect(() => {
-    getCurrentUser()
-      .then((u) => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
+  useEffect(() => { loadUser(); }, []);
 
   function login(userData) {
     setUser(userData);
+    // re-fetch so prefs (including avatarId) are loaded
+    loadUser();
   }
 
   async function logout() {
     await appwriteLogout();
     setUser(null);
+    setAvatarUrl(null); // ← NEW — clear avatar on logout
   }
 
-  // ── refreshUser ──────────────────────────────────────────────────────
-  // Call this after any profile update (name, avatar, etc.)
-  // so the navbar and all other components reflect the new data instantly
+  // Call after any profile update (name, avatar) so navbar updates instantly
   async function refreshUser() {
-    try {
-      const updated = await getCurrentUser();
-      setUser(updated);
-    } catch {
-      // session expired or error — don't crash
-    }
+    await loadUser();
   }
 
   const isLoggedIn = !!user;
 
-  // Show spinner while checking session — prevents flash of login page on refresh
+  // Show spinner while checking session
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f0e0d",
+      <div style={{ minHeight: "100vh", background: "#f9f7f4",
         display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: 36, height: 36, border: "3px solid #f97316",
           borderTopColor: "transparent", borderRadius: "50%",
@@ -52,8 +62,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    // refreshUser is now exposed so any page can trigger a user state refresh
-    <AuthContext.Provider value={{ user, isLoggedIn, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, avatarUrl, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

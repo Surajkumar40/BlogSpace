@@ -1,20 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getUserPosts, getUserDrafts, getImageUrl } from "../lib/postService";
+import { getUserPosts, getUserDrafts, getImageUrl, uploadProfilePicture, getProfilePictureUrl, deleteImage } from "../lib/postService";
 import { account } from "../lib/appwrite";
 
 export default function ProfilePage() {
-  const navigate    = useNavigate();
-  const { user }    = useAuth();
+  const navigate = useNavigate();
+  const { user, avatarUrl, refreshUser } = useAuth(); // ← single call, correct values
 
-  const [profile,   setProfile]   = useState({ name: "", email: "", bio: "", website: "", location: "" });
-  const [isEditing, setIsEditing] = useState(false);
-  const [saved,     setSaved]     = useState(false);
-  const [saving,    setSaving]    = useState(false);
-  const [posts,     setPosts]     = useState([]);
-  const [drafts,    setDrafts]    = useState([]);
-  const [loading,   setLoading]   = useState(true);
+  const [profile,     setProfile]     = useState({ name: "", email: "", bio: "", website: "", location: "" });
+  const [isEditing,   setIsEditing]   = useState(false);
+  const [saved,       setSaved]       = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [posts,       setPosts]       = useState([]);
+  const [drafts,      setDrafts]      = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [uploading,   setUploading]   = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     document.title = "Profile | BlogSpace";
@@ -24,16 +27,14 @@ export default function ProfilePage() {
     if (!user) return;
     async function loadData() {
       try {
-        // Load user prefs from Appwrite account prefs
         const prefs = await account.getPrefs();
         setProfile({
-          name:     user.name                 || "Anonymous Writer",
-          email:    user.email                || "",
-          bio:      prefs.bio                 || "Welcome to my blog! I write about things I love.",
-          website:  prefs.website             || "",
-          location: prefs.location            || "",
+          name:     user.name      || "Anonymous Writer",
+          email:    user.email     || "",
+          bio:      prefs.bio      || "Welcome to my blog! I write about things I love.",
+          website:  prefs.website  || "",
+          location: prefs.location || "",
         });
-
         const [userPosts, userDrafts] = await Promise.all([
           getUserPosts(user.$id),
           getUserDrafts(user.$id),
@@ -51,13 +52,11 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaving(true);
     try {
-      // Save bio, website, location to Appwrite account preferences
       await account.updatePrefs({
         bio:      profile.bio,
         website:  profile.website,
         location: profile.location,
       });
-      // Update name in Appwrite auth
       if (profile.name !== user.name) {
         await account.updateName(profile.name);
       }
@@ -68,6 +67,41 @@ export default function ProfilePage() {
       console.log("Save error:", e.message);
     }
     setSaving(false);
+  }
+
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+  async function handleAvatarChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setAvatarError("Please select an image file."); return; }
+    if (file.size > 5 * 1024 * 1024)    { setAvatarError("Image must be under 5MB.");      return; }
+
+    setUploading(true);
+    setAvatarError("");
+    try {
+      // Delete old avatar if exists
+      const oldId = user?.prefs?.avatarId;
+      if (oldId) await deleteImage(oldId).catch(() => {});
+      // Upload new
+      const newFileId = await uploadProfilePicture(file);
+      await account.updatePrefs({ ...user?.prefs, avatarId: newFileId });
+      await refreshUser(); // updates avatarUrl in navbar + everywhere instantly
+    } catch {
+      setAvatarError("Failed to upload photo.");
+    }
+    setUploading(false);
+  }
+
+  async function handleDeleteAvatar() {
+    if (!window.confirm("Remove profile photo?")) return;
+    try {
+      const oldId = user?.prefs?.avatarId;
+      if (oldId) await deleteImage(oldId).catch(() => {});
+      await account.updatePrefs({ ...user?.prefs, avatarId: "" });
+      await refreshUser();
+    } catch {
+      setAvatarError("Failed to remove photo.");
+    }
   }
 
   const stats = [
@@ -100,16 +134,49 @@ export default function ProfilePage() {
 
           <div className="px-6 pb-6">
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-1 mb-4">
-              <div className="w-24 h-24 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center text-3xl font-bold text-orange-500 bg-gradient-to-br from-orange-50 to-orange-100 font-serif">
-                {getInitials(profile.name)}
+
+              {/* ── Avatar with upload overlay ─────────────────────────── */}
+              <div className="relative group w-24 h-24 -mt-12">
+                <div className="w-24 h-24 rounded-2xl border-4 border-white shadow-lg overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center">
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                    : <span className="text-3xl font-bold text-orange-500 font-serif">{getInitials(profile.name)}</span>
+                  }
+                </div>
+
+                {/* Hover overlay — click to change */}
+                <button onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                  <span className="text-white text-xs font-semibold text-center leading-tight px-1">
+                    {uploading ? "Uploading…" : "Change\nPhoto"}
+                  </span>
+                </button>
+
+                {/* Remove button — only if photo uploaded */}
+                {avatarUrl && !uploading && (
+                  <button onClick={handleDeleteAvatar}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] shadow-md transition-colors">
+                    ✕
+                  </button>
+                )}
+
+                {/* Hidden file input */}
+                <input ref={fileInputRef} type="file" accept="image/*"
+                  onChange={handleAvatarChange} className="hidden" />
               </div>
-              <button
-                onClick={() => setIsEditing(!isEditing)}
+
+              <button onClick={() => setIsEditing(!isEditing)}
                 className={`self-start sm:self-auto text-sm font-semibold px-4 py-2 rounded-xl transition-all
                   ${isEditing ? "bg-gray-100 text-gray-700 hover:bg-gray-200" : "bg-orange-500 text-white hover:bg-orange-600 shadow-md shadow-orange-500/20"}`}>
                 {isEditing ? "Cancel" : "Edit Profile"}
               </button>
             </div>
+
+            {/* Avatar error */}
+            {avatarError && (
+              <p className="text-xs text-red-500 mb-3">{avatarError}</p>
+            )}
 
             {!isEditing ? (
               <div>
@@ -141,9 +208,9 @@ export default function ProfilePage() {
             ) : (
               <div className="space-y-3 mt-2">
                 {[
-                  { label: "Full Name",  key: "name",     type: "text",  placeholder: "Your full name" },
-                  { label: "Location",   key: "location", type: "text",  placeholder: "City, Country" },
-                  { label: "Website",    key: "website",  type: "url",   placeholder: "https://yoursite.com" },
+                  { label: "Full Name", key: "name",     type: "text", placeholder: "Your full name" },
+                  { label: "Location",  key: "location", type: "text", placeholder: "City, Country" },
+                  { label: "Website",   key: "website",  type: "url",  placeholder: "https://yoursite.com" },
                 ].map((f) => (
                   <div key={f.key}>
                     <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">{f.label}</label>
@@ -223,6 +290,7 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

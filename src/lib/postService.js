@@ -114,3 +114,13 @@ export async function publishDraft(draft) {
   await deleteDraft(draft.$id);
   return post;
 }
+
+export async function uploadProfilePicture(file) {
+  const uploaded = await storage.createFile(BUCKET_ID, ID.unique(), file);
+  return uploaded.$id;
+}
+
+export function getProfilePictureUrl(fileId) {
+  if (!fileId || fileId === "") return null;
+  return `${ENDPOINT}/storage/buckets/${BUCKET_ID}/files/${fileId}/view?project=${PROJECT_ID}`;
+}

@@ -1,22 +1,51 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { account } from "../lib/appwrite";
 import { useAuth } from "../context/AuthContext";
+import { uploadProfilePicture, getProfilePictureUrl, deleteImage } from "../lib/postService"; // ← NEW
 
 // ─── EditProfilePage ──────────────────────────────────────────────────────────
 export function EditProfilePage() {
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();          // ← pulls refreshUser from context
-  const [name,    setName]    = useState("");
-  const [saved,   setSaved]   = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState("");
-  const [focused, setFocused] = useState("");
+  const { user, refreshUser, avatarUrl } = useAuth(); // ← added avatarUrl
+  const [name,        setName]       = useState("");
+  const [saved,       setSaved]      = useState(false);
+  const [saving,      setSaving]     = useState(false);
+  const [error,       setError]      = useState("");
+  const [focused,     setFocused]    = useState("");
+  // ── Photo state ──────────────────────────────────────────────────────
+  const [photoFile,   setPhotoFile]  = useState(null);       // selected File object
+  const [photoPreview,setPhotoPreview] = useState(null);     // local blob URL for preview
+  const [uploading,   setUploading]  = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     document.title = "Edit Profile | BlogSpace";
     account.get().then((u) => setName(u.name || "")).catch(() => {});
-  }, []);
+    // Show existing avatar as preview
+    if (avatarUrl) setPhotoPreview(avatarUrl);
+  }, [avatarUrl]);
+
+  // ── Handle file selection ─────────────────────────────────────────────
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file."); return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be under 5MB."); return;
+    }
+    setError("");
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file)); // instant local preview
+  }
+
+  function handleRemovePhoto() {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -24,12 +53,31 @@ export function EditProfilePage() {
     setSaving(true);
     setError("");
     try {
-      await account.updateName(name.trim());  // updates in Appwrite
-      await refreshUser();                    // ← syncs AuthContext so navbar updates instantly
+      // ── 1. Upload new photo if selected ────────────────────────────
+      if (photoFile) {
+        setUploading(true);
+        // Delete old avatar from storage if exists
+        const oldAvatarId = user?.prefs?.avatarId;
+        if (oldAvatarId) {
+          await deleteImage(oldAvatarId).catch(() => {}); // silent fail ok
+        }
+        const newFileId = await uploadProfilePicture(photoFile);
+        // Save avatarId to Appwrite prefs
+        await account.updatePrefs({ ...user?.prefs, avatarId: newFileId });
+        setUploading(false);
+      }
+
+      // ── 2. Update display name ──────────────────────────────────────
+      await account.updateName(name.trim());
+
+      // ── 3. Refresh context so navbar updates instantly ──────────────
+      await refreshUser();
+
       setSaved(true);
       setTimeout(() => { setSaved(false); navigate("/settings"); }, 1500);
     } catch (err) {
-      setError(err.message || "Failed to update name.");
+      setError(err.message || "Failed to update profile.");
+      setUploading(false);
     }
     setSaving(false);
   }
@@ -38,24 +86,70 @@ export function EditProfilePage() {
     `w-full border rounded-xl px-4 py-3 text-sm text-gray-800 outline-none transition-all bg-gray-50 focus:bg-white
     ${focused === f ? "border-orange-400 ring-2 ring-orange-100" : "border-gray-200 hover:border-gray-300"}`;
 
+  const initials = (user?.name || user?.email || "U")
+    .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+
   return (
-    <FormPage title="Edit Profile" subtitle="Update your display name" onBack={() => navigate("/settings")}>
+    <FormPage title="Edit Profile" subtitle="Update your display name and photo" onBack={() => navigate("/settings")}>
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+
+        {/* ── Profile Photo Upload ─────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-3">
+          {/* Avatar preview */}
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-orange-100 flex-shrink-0">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile"
+                  className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-2xl font-bold">
+                  {initials}
+                </div>
+              )}
+            </div>
+            {/* Remove button — only if there's a photo */}
+            {photoPreview && (
+              <button type="button" onClick={handleRemovePhoto}
+                className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-colors shadow-md">
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Upload / Change button */}
+          <div className="flex flex-col items-center gap-1">
+            <button type="button" onClick={() => fileInputRef.current?.click()}
+              className="text-sm text-orange-600 hover:text-orange-700 font-semibold border border-orange-200 hover:border-orange-400 px-4 py-1.5 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
+              {photoPreview ? "Change Photo" : "Upload Photo"}
+            </button>
+            <p className="text-xs text-gray-400">JPG, PNG, WebP · Max 5MB</p>
+          </div>
+
+          {/* Hidden file input */}
+          <input ref={fileInputRef} type="file" accept="image/*"
+            onChange={handleFileChange} className="hidden" />
+        </div>
+
+        {/* ── Name field ───────────────────────────────────────────── */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Full Name</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
             onFocus={() => setFocused("name")} onBlur={() => setFocused("")}
             placeholder="Your full name" className={inputClass("name")} />
         </div>
-        {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
+        )}
+
         {saved ? (
           <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold px-4 py-3 rounded-xl">
             ✓ Profile updated! Redirecting…
           </div>
         ) : (
-          <button type="submit" disabled={saving}
+          <button type="submit" disabled={saving || uploading}
             className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold py-3 rounded-xl shadow-md shadow-orange-500/20 transition-colors text-sm">
-            {saving ? "Saving…" : "Save Changes"}
+            {uploading ? "Uploading photo…" : saving ? "Saving…" : "Save Changes"}
           </button>
         )}
       </form>

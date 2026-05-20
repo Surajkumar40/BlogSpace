@@ -8,11 +8,11 @@ import {
 } from "react-icons/fa";
 
 export default function Navbar({ onLogout }) {
-  const { isLoggedIn, user }    = useAuth();
-  const [menuOpen,     setMenuOpen]      = useState(false);
-  const [profileOpen,  setProfileOpen]   = useState(false);
-  const [activeSection,setActiveSection] = useState("home");
-  const [scrolled,     setScrolled]      = useState(false);
+  const { isLoggedIn, user, avatarUrl } = useAuth(); // ← added avatarUrl
+  const [menuOpen,      setMenuOpen]     = useState(false);
+  const [profileOpen,   setProfileOpen]  = useState(false);
+  const [activeSection, setActiveSection]= useState("home");
+  const [scrolled,      setScrolled]     = useState(false);
   const profileRef = useRef(null);
   const location   = useLocation();
   const navigate   = useNavigate();
@@ -67,16 +67,12 @@ export default function Navbar({ onLogout }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ── Navigation helpers ────────────────────────────────────────────────
-
-  // Navigate to a page and close all menus
   function goTo(path) {
     navigate(path);
     setMenuOpen(false);
     setProfileOpen(false);
   }
 
-  // Scroll to section on home page
   function scrollOrRedirect(id) {
     setMenuOpen(false);
     if (location.pathname !== "/") {
@@ -95,7 +91,6 @@ export default function Navbar({ onLogout }) {
     onLogout();
   }
 
-  // ── Reusable nav section button ───────────────────────────────────────
   const navBtn = (id, label) => (
     <button onClick={() => scrollOrRedirect(id)}
       className={`text-sm px-3 py-2 rounded-lg transition-all cursor-pointer font-medium
@@ -106,7 +101,6 @@ export default function Navbar({ onLogout }) {
     </button>
   );
 
-  // ── Reusable dropdown item ────────────────────────────────────────────
   const dropItem = (path, icon, label) => (
     <button key={path} onClick={() => goTo(path)}
       className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-all text-left">
@@ -115,7 +109,6 @@ export default function Navbar({ onLogout }) {
     </button>
   );
 
-  // ── Reusable mobile drawer item ───────────────────────────────────────
   const drawerItem = (path, emoji, label) => (
     <button key={path} onClick={() => goTo(path)}
       className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 rounded-xl transition-all text-left">
@@ -123,6 +116,19 @@ export default function Navbar({ onLogout }) {
       {label}
     </button>
   );
+
+  // ── Reusable avatar component — photo if exists, initials fallback ────
+  function Avatar({ size = "sm" }) {
+    const dim = size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+    return (
+      <div className={`${dim} rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold`}>
+        {avatarUrl
+          ? <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+          : initials
+        }
+      </div>
+    );
+  }
 
   return (
     <>
@@ -171,9 +177,7 @@ export default function Navbar({ onLogout }) {
                 <div ref={profileRef} className="relative">
                   <button onClick={() => setProfileOpen(!profileOpen)}
                     className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-xs font-bold">
-                      {initials}
-                    </div>
+                    <Avatar size="sm" /> {/* ← was inline div, now uses Avatar */}
                     <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
                       {user?.name?.split(" ")[0] || "Account"}
                     </span>
@@ -262,9 +266,7 @@ export default function Navbar({ onLogout }) {
         {isLoggedIn && (
           <div className="px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                {initials}
-              </div>
+              <Avatar size="lg" /> {/* ← was inline div, now uses Avatar */}
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800 truncate">{user?.name || "User"}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email || ""}</p>
@@ -328,7 +330,6 @@ export default function Navbar({ onLogout }) {
               </div>
             </>
           ) : (
-            // Not logged in
             <div className="px-3 py-3 border-t border-gray-100 space-y-2">
               <button onClick={() => goTo("/login")}
                 className="w-full flex items-center justify-center py-3 text-sm font-semibold text-gray-700 border border-gray-200 hover:border-orange-300 hover:text-orange-600 rounded-xl transition-all">
