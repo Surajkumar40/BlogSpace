@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { getCurrentUser } from "../lib/authService";
-import { logout as appwriteLogout } from "../lib/authService";
+import { getCurrentUser, logout as appwriteLogout } from "../lib/authService";
 import { getProfilePictureUrl } from "../lib/postService";
 
 const AuthContext = createContext(null);
@@ -8,7 +7,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user,      setUser]      = useState(null);
   const [loading,   setLoading]   = useState(true);
-  const [avatarUrl, setAvatarUrl] = useState(null); // ← NEW
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
   // ── Helper: load user + avatar from Appwrite session ─────────────────
   async function loadUser() {
@@ -17,7 +16,7 @@ export function AuthProvider({ children }) {
       setUser(u);
       // avatar stored in Appwrite prefs as avatarId
       const aid = u?.prefs?.avatarId;
-      setAvatarUrl(aid ? getProfilePictureUrl(aid) : null); // ← NEW
+      setAvatarUrl(aid ? getProfilePictureUrl(aid) : null);
     } catch {
       setUser(null);
       setAvatarUrl(null);
@@ -36,9 +35,13 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
-    await appwriteLogout();
+    try {
+      await appwriteLogout();
+    } catch {
+      /* the session may already be invalid (e.g. account was blocked) */
+    }
     setUser(null);
-    setAvatarUrl(null); // ← NEW — clear avatar on logout
+    setAvatarUrl(null);
   }
 
   // Call after any profile update (name, avatar) so navbar updates instantly

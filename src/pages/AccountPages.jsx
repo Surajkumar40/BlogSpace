@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { account } from "../lib/appwrite";
 import { useAuth } from "../context/AuthContext";
-import { uploadProfilePicture, getProfilePictureUrl, deleteImage } from "../lib/postService"; // ← NEW
+import { uploadProfilePicture, deleteImage } from "../lib/postService";
 
 // ─── EditProfilePage ──────────────────────────────────────────────────────────
 export function EditProfilePage() {
   const navigate = useNavigate();
-  const { user, refreshUser, avatarUrl } = useAuth(); // ← added avatarUrl
+  const { user, refreshUser, avatarUrl } = useAuth();
   const [name,        setName]       = useState("");
   const [saved,       setSaved]      = useState(false);
   const [saving,      setSaving]     = useState(false);
@@ -15,16 +15,14 @@ export function EditProfilePage() {
   const [focused,     setFocused]    = useState("");
   // ── Photo state ──────────────────────────────────────────────────────
   const [photoFile,   setPhotoFile]  = useState(null);       // selected File object
-  const [photoPreview,setPhotoPreview] = useState(null);     // local blob URL for preview
+  const [photoPreview,setPhotoPreview] = useState(avatarUrl || null); // existing avatar, or local blob URL after picking a file
   const [uploading,   setUploading]  = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     document.title = "Edit Profile | BlogSpace";
     account.get().then((u) => setName(u.name || "")).catch(() => {});
-    // Show existing avatar as preview
-    if (avatarUrl) setPhotoPreview(avatarUrl);
-  }, [avatarUrl]);
+  }, []);
 
   // ── Handle file selection ─────────────────────────────────────────────
   function handleFileChange(e) {
@@ -265,9 +263,11 @@ export function ChangePasswordPage() {
 // ─── DeleteAccountPage ────────────────────────────────────────────────────────
 export function DeleteAccountPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [confirm,  setConfirm]  = useState("");
   const [focused,  setFocused]  = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [error,    setError]    = useState("");
   const PHRASE = "DELETE";
   const ready  = confirm === PHRASE;
 
@@ -276,22 +276,29 @@ export function DeleteAccountPage() {
   async function handleDelete() {
     if (!ready) return;
     setDeleting(true);
+    setError("");
     try {
-      await account.deleteSession("current");
-    } catch {}
-    localStorage.clear();
+      // The browser SDK cannot hard-delete a user, so this blocks the account
+      // (Appwrite keeps the record but the user can no longer sign in).
+      await account.updateStatus();
+    } catch (e) {
+      setDeleting(false);
+      setError(e?.message || "Could not delete your account. Please try again.");
+      return;
+    }
+    await logout(); // clears the session and the in-memory user
     navigate("/login");
   }
 
   return (
-    <FormPage title="Delete Account" subtitle="This action is permanent and cannot be undone" onBack={() => navigate("/settings")} danger>
+    <FormPage title="Delete Account" subtitle="Your account will be disabled and you will be signed out" onBack={() => navigate("/settings")} danger>
       <div className="space-y-5">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-red-800 mb-1">Before you continue</p>
           <ul className="text-sm text-red-700 space-y-1">
-            <li>• All your posts and drafts will be permanently deleted</li>
-            <li>• Your profile and preferences will be erased</li>
-            <li>• This action cannot be reversed</li>
+            <li>• You will be signed out and will not be able to sign in again</li>
+            <li>• Posts you already published stay visible under your name</li>
+            <li>• To have your content removed too, contact the site admin</li>
           </ul>
         </div>
         <div>
@@ -305,10 +312,15 @@ export function DeleteAccountPage() {
             className={`w-full border rounded-xl px-4 py-3 text-sm font-mono outline-none transition-all bg-gray-50
               ${focused ? "border-red-400 ring-2 ring-red-100" : "border-gray-200"}`} />
         </div>
+        {error && (
+          <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            {error}
+          </div>
+        )}
         <div className="flex gap-3">
           <button onClick={handleDelete} disabled={!ready || deleting}
             className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all text-sm">
-            {deleting ? "Deleting…" : "Permanently Delete Account"}
+            {deleting ? "Deleting…" : "Delete My Account"}
           </button>
           <button onClick={() => navigate("/settings")}
             className="flex-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors text-sm">

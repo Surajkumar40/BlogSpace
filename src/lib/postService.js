@@ -24,7 +24,11 @@ export async function uploadImage(file) {
 
 export async function deleteImage(fileId) {
   if (!fileId || fileId === "") return;
-  try { await storage.deleteFile(BUCKET_ID, fileId); } catch {}
+  try {
+    await storage.deleteFile(BUCKET_ID, fileId);
+  } catch {
+    /* file may already be deleted; nothing to do */
+  }
 }
 
 // POSTS
