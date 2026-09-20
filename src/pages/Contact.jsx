@@ -35,23 +35,16 @@ const CONTACT_INFO = [
 
 export default function Contact() {
   const { user } = useAuth();
-  const [form,    setForm]    = useState({ name: "", email: "", phone: "", subject: "", message: "" });
+  const [form,    setForm]    = useState(() => ({
+    name: user?.name || "", email: user?.email || "", phone: "", subject: "", message: "",
+  }));
   const [status,  setStatus]  = useState("idle");
+  const [submitError, setSubmitError] = useState("");
   const [errors,  setErrors]  = useState({});
   const [focused, setFocused] = useState("");
 
   useEffect(() => { document.title = "Contact | BlogSpace"; }, []);
 
-  // Pre-fill name and email if user is logged in
-  useEffect(() => {
-    if (user) {
-      setForm((f) => ({
-        ...f,
-        name:  f.name  || user.name  || "",
-        email: f.email || user.email || "",
-      }));
-    }
-  }, [user]);
 
   function validate() {
     const e = {};
@@ -68,6 +61,7 @@ export default function Contact() {
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+    setSubmitError("");
     setStatus("loading");
 
     try {
@@ -83,9 +77,10 @@ export default function Contact() {
       setStatus("sent");
       setForm({ name: "", email: "", phone: "", subject: "", message: "" });
     } catch (err) {
-      console.log("Contact error:", err.message);
-      // Still show success to user — don't expose errors
-      setStatus("sent");
+      console.error("Contact error:", err.message);
+      // Keep what the visitor typed and tell them it did not go through
+      setSubmitError("We couldn't send your message right now. Please try again in a moment.");
+      setStatus("idle");
     }
   }
 
@@ -188,6 +183,12 @@ export default function Contact() {
                     className={inputClass("message") + " resize-none"} />
                   {errors.message && <p className="text-xs text-red-500 mt-1">{errors.message}</p>}
                 </div>
+
+                {submitError && (
+                  <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    {submitError}
+                  </p>
+                )}
 
                 <button type="submit" disabled={status === "loading"}
                   className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold py-3.5 rounded-xl shadow-md shadow-orange-500/20 transition-all text-sm">

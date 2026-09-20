@@ -9,17 +9,15 @@ export default function ResetPassword() {
   const [confirmPass, setConfPass] = useState("");
   const [showNew,  setShowNew]     = useState(false);
   const [showConf, setShowConf]    = useState(false);
-  const [status,   setStatus]      = useState("idle");
+  const userId = searchParams.get("userId");
+  const secret = searchParams.get("secret");
+  const [status,   setStatus]      = useState(!userId || !secret ? "invalid" : "idle");
   const [errorMsg, setErrorMsg]    = useState("");
   const [focused,  setFocused]     = useState("");
 
-  const userId = searchParams.get("userId");
-  const secret = searchParams.get("secret");
-
   useEffect(() => {
     document.title = "Reset Password | BlogSpace";
-    if (!userId || !secret) setStatus("invalid");
-  }, [userId, secret]);
+  }, []);
 
   async function handleReset(e) {
     e.preventDefault();

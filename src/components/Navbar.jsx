@@ -7,8 +7,21 @@ import {
   FaEdit, FaSignOutAlt, FaTachometerAlt, FaTimes, FaBars,
 } from "react-icons/fa";
 
+// Avatar: photo if the user has one, initials otherwise.
+// Defined at module level so it is not re-created on every Navbar render.
+function Avatar({ size = "sm", avatarUrl, initials }) {
+  const dim = size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+  return (
+    <div className={`${dim} rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold`}>
+      {avatarUrl
+        ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+        : initials}
+    </div>
+  );
+}
+
 export default function Navbar({ onLogout }) {
-  const { isLoggedIn, user, avatarUrl } = useAuth(); // ← added avatarUrl
+  const { isLoggedIn, user, avatarUrl } = useAuth();
   const [menuOpen,      setMenuOpen]     = useState(false);
   const [profileOpen,   setProfileOpen]  = useState(false);
   const [activeSection, setActiveSection]= useState("home");
@@ -39,6 +52,8 @@ export default function Navbar({ onLogout }) {
 
   // ── Close everything on route change ─────────────────────────────────
   useEffect(() => {
+    // Intentional: reset the menus whenever the route changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMenuOpen(false);
     setProfileOpen(false);
   }, [location.pathname]);
@@ -117,19 +132,6 @@ export default function Navbar({ onLogout }) {
     </button>
   );
 
-  // ── Reusable avatar component — photo if exists, initials fallback ────
-  function Avatar({ size = "sm" }) {
-    const dim = size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
-    return (
-      <div className={`${dim} rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold`}>
-        {avatarUrl
-          ? <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-          : initials
-        }
-      </div>
-    );
-  }
-
   return (
     <>
       {/* ── Navbar bar ──────────────────────────────────────────────────── */}
@@ -177,7 +179,7 @@ export default function Navbar({ onLogout }) {
                 <div ref={profileRef} className="relative">
                   <button onClick={() => setProfileOpen(!profileOpen)}
                     className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-                    <Avatar size="sm" /> {/* ← was inline div, now uses Avatar */}
+                    <Avatar size="sm" avatarUrl={avatarUrl} initials={initials} />
                     <span className="text-sm font-medium text-gray-700 max-w-[100px] truncate">
                       {user?.name?.split(" ")[0] || "Account"}
                     </span>
@@ -266,7 +268,7 @@ export default function Navbar({ onLogout }) {
         {isLoggedIn && (
           <div className="px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
             <div className="flex items-center gap-3">
-              <Avatar size="lg" /> {/* ← was inline div, now uses Avatar */}
+              <Avatar size="lg" avatarUrl={avatarUrl} initials={initials} />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800 truncate">{user?.name || "User"}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email || ""}</p>

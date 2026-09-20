@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getUserPosts, getUserDrafts, getImageUrl, uploadProfilePicture, getProfilePictureUrl, deleteImage } from "../lib/postService";
+import { getUserPosts, getUserDrafts, getImageUrl, uploadProfilePicture, deleteImage } from "../lib/postService";
 import { account } from "../lib/appwrite";
 
 export default function ProfilePage() {

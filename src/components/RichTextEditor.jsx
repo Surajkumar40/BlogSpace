@@ -82,7 +82,7 @@ export default function RichTextEditor({ content, onChange, placeholder = "Tell 
     if (editor && content !== undefined && editor.getHTML() !== content) {
       editor.commands.setContent(content || "");
     }
-  }, [content]);
+  }, [content, editor]);
 
   const addLink = useCallback(() => {
     const url = window.prompt("Enter URL:");

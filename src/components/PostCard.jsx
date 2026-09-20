@@ -48,6 +48,7 @@ const PostCard = ({ id, title, category, image, excerpt, author, readTime }) => 
         }}>
           {image && !imgError ? (
             <img
+            loading="lazy"
               src={image}
               alt={title}
               onError={() => setImgError(true)}

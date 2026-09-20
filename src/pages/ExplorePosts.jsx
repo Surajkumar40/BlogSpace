@@ -69,6 +69,7 @@ function PostCard({ post, onClick }) {
         {/* Actual uploaded image */}
         {hasImage && (
           <img
+            loading="lazy"
             src={imgSrc}
             alt={post.title}
             onError={() => setImgError(true)}
@@ -195,8 +196,8 @@ export default function ExplorePosts({ allPosts, refreshPosts }) {
 
   useEffect(() => {
     if (refreshPosts) refreshPosts(); // refresh every time Explore is visited
-  }, []);
-  
+  }, [refreshPosts]);
+
   const safePosts = allPosts || [];
 
   const filteredPosts = safePosts.filter((post) => {

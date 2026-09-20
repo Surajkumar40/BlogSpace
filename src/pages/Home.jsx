@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { getAllPosts } from "../lib/postService";
 import PostGrid from "../components/PostGrid";
 import { useEffect } from "react";
 
@@ -10,9 +9,9 @@ const FEATURES = [
 ];
 
 export default function Home({ allPosts, refreshPosts }) {
-   useEffect(() => {
+  useEffect(() => {
     if (refreshPosts) refreshPosts(); // refresh every time Home is visited
-  }, []);
+  }, [refreshPosts]);
   const safePosts   = allPosts || [];
   const latestPosts = safePosts.slice(0, 6);
 
@@ -24,8 +23,8 @@ export default function Home({ allPosts, refreshPosts }) {
       <section id="home" className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 overflow-hidden">
         {/* Background effects */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-800px h-800px bg-orange-500/8 rounded-full blur-[140px]" />
-          <div className="absolute bottom-0 left-0 w-400px h-400px bg-orange-600/5 rounded-full blur-[100px]" />
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-orange-500/8 rounded-full blur-[140px]" />
+          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-orange-600/5 rounded-full blur-[100px]" />
           <div className="absolute inset-0 opacity-[0.03]"
             style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
         </div>

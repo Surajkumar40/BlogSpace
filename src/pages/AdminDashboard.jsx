@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { isAdmin } from "../utils/roles";
 import { wordCount, formatDate } from "../utils/utils";
 import { CATEGORY_COLORS } from "../utils/theme";
 import {
@@ -11,29 +12,10 @@ import {
 import { databases, DATABASE_ID, MESSAGES_ID, PROFILES_ID } from "../lib/appwrite";
 import { Query } from "appwrite";
 
-const ADMIN_EMAIL    = import.meta.env.VITE_ADMIN_EMAIL    || "admin@blogspace.com";
-const ADMIN_PIN_HASH = import.meta.env.VITE_ADMIN_PIN_HASH || "";
-
-async function hashPin(pin) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export default function AdminDashboard() {
-  const { user }    = useAuth();
-  const navigate    = useNavigate();
-
-  // Auth state
-  const [verified,     setVerified]     = useState(() => sessionStorage.getItem("adminVerified") === "true");
-  const [emailInput,   setEmailInput]   = useState("");
-  const [pinInput,     setPinInput]     = useState("");
-  const [loginError,   setError]        = useState("");
-  const [showPin,      setShowPin]      = useState(false);
-  const [shake,        setShake]        = useState(false);
-  const [attempts,     setAttempts]     = useState(0);
-  const [locked,       setLocked]       = useState(false);
-  const [lockTimer,    setLockTimer]    = useState(0);
-  const [loginLoading, setLoginLoading] = useState(false);
+  const { user }  = useAuth();
+  const navigate  = useNavigate();
+  const allowed   = isAdmin(user);
 
   // Data state
   const [posts,           setPosts]           = useState([]);
@@ -47,76 +29,42 @@ export default function AdminDashboard() {
   const [expandedMsg,     setExpandedMsg]     = useState(null);
 
   useEffect(() => {
-    document.title = verified ? "Admin Dashboard | BlogSpace" : "Admin Login | BlogSpace";
-  }, [verified]);
+    document.title = allowed ? "Admin Dashboard | BlogSpace" : "Access Denied | BlogSpace";
+  }, [allowed]);
 
   useEffect(() => {
-    if (!verified) return;
+    if (!allowed) return;
     async function fetchAll() {
       setDataLoading(true);
       try {
         const [allPosts, allDrafts, allUsers, allMessages] = await Promise.all([
           getAllPosts(),
-         getAllDrafts(),
-          databases.listDocuments(DATABASE_ID, PROFILES_ID, [Query.orderDesc("$createdAt")]).then(r => r.documents),
-          databases.listDocuments(DATABASE_ID, MESSAGES_ID, [Query.orderDesc("$createdAt")]).then(r => r.documents),
+          getAllDrafts(),
+          databases.listDocuments(DATABASE_ID, PROFILES_ID, [Query.orderDesc("$createdAt")]).then((r) => r.documents),
+          databases.listDocuments(DATABASE_ID, MESSAGES_ID, [Query.orderDesc("$createdAt")]).then((r) => r.documents),
         ]);
         setPosts(allPosts);
         setDrafts(allDrafts);
         setUsers(allUsers);
         setMessages(allMessages);
       } catch (e) {
-        console.log("Admin fetch error:", e.message);
+        console.error("Admin fetch error:", e.message);
       }
       setDataLoading(false);
     }
     fetchAll();
-  }, [verified, user]);
-
-  useEffect(() => {
-    if (!locked) return;
-    if (lockTimer <= 0) { setLocked(false); setAttempts(0); return; }
-    const t = setTimeout(() => setLockTimer((n) => n - 1), 1000);
-    return () => clearTimeout(t);
-  }, [locked, lockTimer]);
-
-  async function handleLogin() {
-    if (locked || loginLoading) return;
-    setLoginLoading(true);
-    if (emailInput.trim().toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      recordFail(); setLoginLoading(false); return;
-    }
-    const enteredHash = await hashPin(pinInput);
-    if (enteredHash === ADMIN_PIN_HASH) {
-      sessionStorage.setItem("adminVerified", "true");
-      setVerified(true); setError("");
-    } else { recordFail(); }
-    setLoginLoading(false);
-  }
-
-  function recordFail() {
-    const n = attempts + 1; setAttempts(n);
-    setShake(true); setTimeout(() => setShake(false), 600);
-    if (n >= 3) { setLocked(true); setLockTimer(30); setError("Too many failed attempts. Locked for 30 seconds."); }
-    else { setError(`Incorrect credentials. ${3 - n} attempt${3 - n !== 1 ? "s" : ""} remaining.`); }
-    setPinInput("");
-  }
-
-  function handleLogout() {
-    sessionStorage.removeItem("adminVerified");
-    setVerified(false); setEmailInput(""); setPinInput("");
-  }
+  }, [allowed]);
 
   async function handleDeletePost(id) {
     setDeletingId(id);
     try { await deletePost(id); setPosts((p) => p.filter((x) => x.$id !== id)); }
-    catch (e) { console.log(e.message); }
+    catch (e) { console.error(e.message); }
     setDeletingId(null); setConfirmDeleteId(null);
   }
 
   async function handleDeleteDraft(id) {
     try { await deleteDraft(id); setDrafts((d) => d.filter((x) => x.$id !== id)); }
-    catch (e) { console.log(e.message); }
+    catch (e) { console.error(e.message); }
     setConfirmDeleteId(null);
   }
 
@@ -124,64 +72,30 @@ export default function AdminDashboard() {
     try {
       await databases.deleteDocument(DATABASE_ID, MESSAGES_ID, id);
       setMessages((m) => m.filter((x) => x.$id !== id));
-    } catch (e) { console.log(e.message); }
+    } catch (e) { console.error(e.message); }
     setConfirmDeleteId(null);
   }
 
-  // ── Login Gate ──────────────────────────────────────────────────────────────
-  if (!verified) {
+  // ── Access gate ─────────────────────────────────────────────────────────────
+  // UI-level check only. The database itself must also restrict these
+  // collections to the "admin" label (see README → Appwrite setup).
+  if (!allowed) {
     return (
       <div className="min-h-screen bg-[#0f0e0d] flex items-center justify-center px-4 pt-16">
-        <div className="pointer-events-none fixed inset-0 overflow-hidden">
-          <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-orange-500/8 rounded-full blur-[120px]" />
-        </div>
-        <div className={`w-full max-w-md relative z-10 transition-all duration-300 ${shake ? "animate-shake" : ""}`}>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-8 py-8 text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-              </div>
-              <h1 className="text-2xl font-bold text-white font-serif">Admin Access</h1>
-              <p className="text-orange-100 text-sm mt-1">Restricted area — authorised users only</p>
-            </div>
-            <div className="px-8 py-7 space-y-4">
-              {locked && <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-semibold px-4 py-3 rounded-xl">🔒 Locked — wait {lockTimer}s</div>}
-              {loginError && !locked && <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl">{loginError}</div>}
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Admin Email</label>
-                <input type="email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleLogin()} disabled={locked} placeholder="admin@blogspace.com"
-                  className="w-full bg-white/5 border border-white/10 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Admin PIN</label>
-                <div className="relative">
-                  <input type={showPin ? "text" : "password"} value={pinInput}
-                    onChange={(e) => setPinInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                    disabled={locked} placeholder="Enter PIN" maxLength={16}
-                    className="w-full bg-white/5 border border-white/10 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 rounded-xl px-4 py-3 pr-16 text-sm text-white placeholder-gray-600 outline-none transition-all disabled:opacity-50" />
-                  <button type="button" onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-200 font-medium">
-                    {showPin ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-center gap-1.5">
-                {[1,2,3].map((n) => <div key={n} className={`w-2 h-2 rounded-full transition-colors ${attempts >= n ? "bg-red-400" : "bg-white/10"}`} />)}
-                <span className="text-xs text-gray-600 ml-1">failed attempts</span>
-              </div>
-              <button onClick={handleLogin} disabled={locked || !emailInput || !pinInput || loginLoading}
-                className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-500/30 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow transition text-sm flex items-center justify-center gap-2">
-                {loginLoading ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>Verifying…</> : locked ? `Locked (${lockTimer}s)` : "Enter Dashboard"}
-              </button>
-              <button onClick={() => navigate("/")} className="w-full text-center text-sm text-gray-500 hover:text-gray-300 py-1">← Back to site</button>
-            </div>
+        <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl overflow-hidden text-center">
+          <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-8 py-8">
+            <h1 className="text-2xl font-bold text-white font-serif">Admin access required</h1>
+            <p className="text-orange-100 text-sm mt-1">This area is limited to accounts with the admin role.</p>
           </div>
-          <p className="text-center text-gray-600 text-xs mt-4">Session expires when browser tab is closed</p>
+          <div className="px-8 py-7">
+            <button
+              onClick={() => navigate("/")}
+              className="w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl shadow transition text-sm"
+            >
+              Back to site
+            </button>
+          </div>
         </div>
-        <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}.animate-shake{animation:shake 0.5s ease-in-out;}`}</style>
       </div>
     );
   }
@@ -190,7 +104,6 @@ export default function AdminDashboard() {
   const allContent      = [...posts, ...drafts];
   const categories      = allContent.reduce((acc, item) => { const c = item.category || "Other"; acc[c] = (acc[c] || 0) + 1; return acc; }, {});
   const categoryEntries = Object.entries(categories).sort((a, b) => b[1] - a[1]);
-  const maxCatCount     = categoryEntries[0]?.[1] || 1;
 
   const monthlyData = (() => {
     const months = [];
@@ -244,7 +157,6 @@ export default function AdminDashboard() {
           <div className="flex flex-wrap gap-2">
             <button onClick={() => navigate("/write-post")} className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm transition">+ New Post</button>
             <button onClick={() => navigate("/")} className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-4 py-2 rounded-xl transition">← Back to Site</button>
-            <button onClick={handleLogout} className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-sm font-semibold px-4 py-2 rounded-xl transition">Lock</button>
           </div>
         </div>
       </div>

@@ -67,8 +67,10 @@ export default function PostDetail() {
   const [post,     setPost]     = useState(null);
   const [related,  setRelated]  = useState([]);
   const [imgError, setImgError] = useState(false);
-  const [loading,  setLoading]  = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const invalidId = !id || id === "undefined";
+  const [loading,  setLoading]  = useState(!invalidId);
+  const [failed,   setFailed]   = useState(false);
+  const notFound = invalidId || failed;
   const [copied,   setCopied]   = useState(false);
   const [readProgress, setReadProgress] = useState(0);
   const contentRef = useRef(null);
@@ -97,7 +99,7 @@ export default function PostDetail() {
   }, [post]);
 
   useEffect(() => {
-    if (!id || id === "undefined") { setNotFound(true); setLoading(false); return; }
+    if (invalidId) return;
     async function loadPost() {
       setLoading(true);
       try {
@@ -113,13 +115,13 @@ export default function PostDetail() {
           document.title = `${seed.title} | BlogSpace`;
           setRelated(SEED_POSTS.filter((p) => p.id !== id && p.category === seed.category).slice(0, 3));
         } else {
-          setNotFound(true);
+          setFailed(true);
         }
       }
       setLoading(false);
     }
     loadPost();
-  }, [id]);
+  }, [id, invalidId]);
 
   function handleCopy() {
     navigator.clipboard.writeText(window.location.href);
